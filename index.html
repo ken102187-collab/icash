@@ -3,143 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>iMoney - AI 資產管理</title>
+    <title>icash 資產管理</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@0.321.0"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
-        .pwa-card { border-radius: 2.5rem; }
+        body { background-color: #f8fafc; margin: 0; font-family: sans-serif; }
+        #error-display { color: red; padding: 20px; font-family: monospace; display: none; }
     </style>
 </head>
 <body>
+    <div id="error-display"></div>
+    
     <div id="root">
-        <div style="display: flex; justify-content: center; align-items: center; height: 100vh; color: #94a3b8; font-weight: bold;">
-            系統加載中，請稍候...
+        <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; color: #64748b;">
+            <div id="loading-spinner" style="border: 4px solid #e2e8f0; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animate: spin 1s linear infinite;"></div>
+            <p style="margin-top: 15px; font-weight: bold;">icash 啟動中...</p>
         </div>
     </div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
-
-        /**
-         * 重要：請務必填寫以下資訊，否則功能會失效
-         * 你可以從 Firebase Console -> 專案設定 -> 您的應用程式 中找到
-         */
-        const firebaseConfig = {
-            apiKey: "你的_FIREBASE_API_KEY",
-            authDomain: "你的_PROJECT.firebaseapp.com",
-            projectId: "你的_PROJECT_ID",
-            storageBucket: "你的_PROJECT.appspot.com",
-            messagingSenderId: "你的_SENDER_ID",
-            appId: "你的_APP_ID"
+        // 錯誤監聽：防止空白頁
+        window.onerror = function(msg, url, line) {
+            const errDiv = document.getElementById('error-display');
+            errDiv.style.display = 'block';
+            errDiv.innerHTML = `運行出錯: ${msg} <br/> 行號: ${line}`;
+            return false;
         };
 
-        const Icon = ({ name, size = 24, className = "" }) => {
-            const LucideIcon = lucide[name];
-            return LucideIcon ? <LucideIcon size={size} className={className} /> : null;
-        };
+        const { useState, useMemo } = React;
 
         function App() {
-            const [currentTab, setCurrentTab] = useState('home');
             const [fxRate, setFxRate] = useState(32.45);
-            const [hideValues, setHideValues] = useState(false);
             const [syncStatus, setSyncStatus] = useState('');
-            const [isUpdating, setIsUpdating] = useState(false);
-            
-            // 這是你提供的 Gemini API Key
             const apiKey = "AIzaSyDV4ePstEkY2nZJqavAyzzYrHfI2cxSIp8";
 
-            // 模擬一些預設資料（因為你目前可能還沒設好 Firebase）
-            const [assets, setAssets] = useState([
-                { id: 1, type: 'bank', name: '常用帳戶', balance: 50000, currency: 'TWD' },
-                { id: 2, type: 'us_stock', name: 'NVIDIA', quantity: 10, lastPrice: 800, currency: 'USD' }
-            ]);
-
             const handleSync = async () => {
-                setIsUpdating(true);
-                setSyncStatus('AI 更新中...');
+                setSyncStatus('更新匯率中...');
                 try {
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            contents: [{ parts: [{ text: "獲取目前 USD/TWD 匯率。回傳 JSON: {\"rate\": 數字}" }] }]
+                            contents: [{ parts: [{ text: "USD/TWD rate? Return JSON: {\"rate\": number}" }] }]
                         })
                     });
-                    const data = await response.json();
+                    const data = await res.json();
                     const text = data.candidates[0].content.parts[0].text;
                     const json = JSON.parse(text.match(/\{.*\}/s)[0]);
                     if (json.rate) setFxRate(json.rate);
-                    setSyncStatus('同步完成');
+                    setSyncStatus('更新成功');
                 } catch (e) {
-                    setSyncStatus('同步失敗');
-                    console.error(e);
+                    setSyncStatus('API 錯誤');
                 }
                 setTimeout(() => setSyncStatus(''), 2000);
-                setIsUpdating(false);
             };
 
-            const totals = useMemo(() => {
-                let sum = 0;
-                assets.forEach(a => {
-                    const val = a.type === 'bank' ? a.balance : (a.lastPrice * a.quantity);
-                    sum += val * (a.currency === 'USD' ? fxRate : 1);
-                });
-                return sum;
-            }, [assets, fxRate]);
-
             return (
-                <div className="max-w-md mx-auto min-h-screen flex flex-col">
-                    {/* Top Bar */}
-                    <header className="p-6 flex justify-between items-center bg-white/70 backdrop-blur-md sticky top-0 z-10">
-                        <h1 className="text-2xl font-black tracking-tighter">icash</h1>
-                        <div className="flex gap-3">
-                            <button onClick={() => setHideValues(!hideValues)} className="p-2 text-slate-400">
-                                <Icon name={hideValues ? "EyeOff" : "Eye"} size={20} />
-                            </button>
-                            <button onClick={handleSync} className="p-2 text-slate-400 relative">
-                                <Icon name="RefreshCw" size={20} className={isUpdating ? "animate-spin" : ""} />
-                                {syncStatus && <span className="absolute -bottom-8 right-0 text-[10px] bg-black text-white px-2 py-1 rounded-full whitespace-nowrap">{syncStatus}</span>}
-                            </button>
-                        </div>
+                <div className="max-w-md mx-auto min-h-screen bg-slate-50 flex flex-col p-6">
+                    <header className="flex justify-between items-center mb-8">
+                        <h1 className="text-3xl font-black text-slate-900">icash</h1>
+                        <button onClick={handleSync} className="bg-white p-3 rounded-2xl shadow-sm active:scale-95 transition-all text-slate-500 relative">
+                            更新匯率 {syncStatus && <span className="absolute -bottom-8 right-0 text-xs text-blue-500 font-bold">{syncStatus}</span>}
+                        </button>
                     </header>
 
-                    <main className="p-6 flex-1">
-                        {/* 總覽卡片 */}
-                        <section className="bg-slate-900 p-8 pwa-card text-white shadow-xl mb-8 relative overflow-hidden">
-                            <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-2">Total Net Worth</p>
-                            <h2 className="text-4xl font-black">
-                                {hideValues ? "••••••" : `$${Math.round(totals).toLocaleString()}`}
-                            </h2>
-                            <div className="mt-6 inline-block bg-white/10 px-3 py-1 rounded-lg text-[10px] font-bold">
-                                USD/TWD: {fxRate}
-                            </div>
-                            <div className="absolute -right-10 -top-10 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl"></div>
-                        </section>
-
-                        {/* 分類清單 */}
-                        <div className="grid grid-cols-2 gap-4">
-                            {['tw_stock', 'us_stock', 'crypto', 'bank'].map(type => (
-                                <div key={type} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-                                    <p className="text-slate-400 text-[10px] font-black uppercase mb-1">{type.replace('_', ' ')}</p>
-                                    <p className="text-lg font-black">{hideValues ? "••••" : "Active"}</p>
-                                </div>
-                            ))}
+                    <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl mb-6">
+                        <p className="text-slate-400 text-xs font-bold uppercase mb-2">我的總資產 (TWD)</p>
+                        <h2 className="text-4xl font-black mb-4">$0</h2>
+                        <div className="text-[10px] bg-white/10 inline-block px-3 py-1 rounded-full text-slate-300">
+                            目前匯率: {fxRate}
                         </div>
-                    </main>
+                    </div>
 
-                    {/* 下選單 */}
-                    <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-100 p-4 flex justify-around items-center">
-                        <button className="text-blue-600"><Icon name="LayoutDashboard" /></button>
-                        <button className="text-slate-300"><Icon name="TrendingUp" /></button>
-                        <button className="bg-blue-600 p-3 rounded-2xl text-white shadow-lg -translate-y-4"><Icon name="Plus" /></button>
-                        <button className="text-slate-300"><Icon name="Settings" /></button>
-                        <button className="text-slate-300"><Icon name="User" /></button>
-                    </nav>
+                    <div className="grid grid-cols-2 gap-4">
+                        {['台股', '美股', '加密貨幣', '銀行'].map(cat => (
+                            <div key={cat} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+                                <p className="text-slate-400 text-[10px] font-black mb-1">{cat}</p>
+                                <p className="text-lg font-bold text-slate-300">未設定</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="mt-10 p-6 bg-blue-50 rounded-3xl border border-blue-100">
+                        <p className="text-blue-800 text-sm font-bold">💡 提示</p>
+                        <p className="text-blue-600 text-xs mt-1">請填寫 Firebase Config 以啟用儲存功能。</p>
+                    </div>
                 </div>
             );
         }
