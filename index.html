@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>iMoney - AI 資產管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', -apple-system, sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        
+        // --- 請在此處填入你的 Firebase 配置 ---
+        const firebaseConfig = {
+            apiKey: "你的_FIREBASE_API_KEY",
+            authDomain: "你的_PROJECT.firebaseapp.com",
+            projectId: "你的_PROJECT_ID",
+            storageBucket: "你的_PROJECT.appspot.com",
+            messagingSenderId: "你的_SENDER_ID",
+            appId: "你的_APP_ID"
+        };
+
+        // 圖示組件介接
+        const Icon = ({ name, ...props }) => {
+            const IconComponent = lucide[name];
+            return IconComponent ? <IconComponent {...props} /> : null;
+        };
+
+        function App() {
+            const [user, setUser] = useState({ uid: 'guest_user' }); // 演示用，正式請串接 Firebase Auth
+            const [assets, setAssets] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [isUpdating, setIsUpdating] = useState(false);
+            const [currentTab, setCurrentTab] = useState('home');
+            const [showAddModal, setShowAddModal] = useState(false);
+            const [fxRate, setFxRate] = useState(32.5);
+            const [hideValues, setHideValues] = useState(false);
+            const [syncStatus, setSyncStatus] = useState('');
+            
+            // 你的 Gemini API Key
+            const apiKey = "AIzaSyDV4ePstEkY2nZJqavAyzzYrHfI2cxSIp8";
+
+            const [formData, setFormData] = useState({ 
+                type: 'tw_stock', name: '', symbol: '', balance: '', quantity: '' 
+            });
+
+            // AI 同步邏輯
+            const handleSyncAll = async () => {
+                if (isUpdating) return;
+                setIsUpdating(true);
+                setSyncStatus('正在獲取最新匯率...');
+                
+                try {
+                    const fxRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            contents: [{ parts: [{ text: "獲取目前 USD/TWD 匯率。只回傳 JSON 格式: {\"rate\": 數字}" }] }]
+                        })
+                    });
+                    const data = await fxRes.json();
+                    const text = data.candidates[0].content.parts[0].text;
+                    const json = JSON.parse(text.match(/\{.*\}/s)[0]);
+                    if (json.rate) setFxRate(json.rate);
+                    
+                    setSyncStatus('更新成功！');
+                } catch (e) {
+                    setSyncStatus('更新失敗');
+                }
+                setTimeout(() => setSyncStatus(''), 2000);
+                setIsUpdating(false);
+            };
+
+            const totals = useMemo(() => {
+                const res = { total: 0, tw_stock: 0, us_stock: 0, crypto: 0, bank: 0 };
+                assets.forEach(a => {
+                    const val = a.type === 'bank' ? (Number(a.balance) || 0) : ((Number(a.lastPrice) || 0) * (Number(a.quantity) || 0));
+                    const twdVal = val * (a.currency === 'USD' ? fxRate : 1);
+                    res.total += twdVal;
+                    res[a.type] += twdVal;
+                });
+                return res;
+            }, [assets, fxRate]);
+
+            const catStyle = {
+                tw_stock: { label: '台股', icon: 'TrendingUp', color: 'bg-emerald-50', text: 'text-emerald-500' },
+                us_stock: { label: '美股', icon: 'Globe', color: 'bg-blue-50', text: 'text-blue-500' },
+                crypto: { label: '幣圈', icon: 'Bitcoin', color: 'bg-amber-50', text: 'text-amber-500' },
+                bank: { label: '銀行', icon: 'Landmark', color: 'bg-slate-50', text: 'text-slate-500' }
+            };
+
+            return (
+                <div className="min-h-screen bg-[#f8fafc] pb-32 text-slate-900 select-none">
+                    {/* Header */}
+                    <div className="bg-white/80 backdrop-blur-xl border-b border-slate-100 px-6 py-6 sticky top-0 z-30">
+                        <div className="max-w-md mx-auto flex justify-between items-center">
+                            <h1 className="text-xl font-black">{currentTab === 'home' ? 'iMoney 資產' : catStyle[currentTab]?.label}</h1>
+                            <div className="flex gap-2">
+                                <button onClick={() => setHideValues(!hideValues)} className="p-3 bg-slate-50 rounded-2xl text-slate-400">
+                                    <Icon name={hideValues ? "EyeOff" : "Eye"} size={20}/>
+                                </button>
+                                <button onClick={handleSyncAll} className="p-3 bg-slate-50 rounded-2xl text-slate-400 relative">
+                                    <Icon name="RefreshCw" size={20} className={isUpdating ? 'animate-spin' : ''}/>
+                                    {syncStatus && <span className="absolute top-14 right-0 bg-black text-white text-[10px] px-2 py-1 rounded shadow-lg">{syncStatus}</span>}
+                                </button>
+                                <button onClick={() => setShowAddModal(true)} className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg"><Icon name="Plus" size={20}/></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="max-w-md mx-auto p-6">
+                        {currentTab === 'home' ? (
+                            <div className="space-y-6">
+                                <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden">
+                                    <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">估計總淨值 (TWD)</p>
+                                    <h2 className="text-4xl font-black truncate">
+                                        {hideValues ? '••••••' : `$${totals.total.toLocaleString()}`}
+                                    </h2>
+                                    <div className="mt-8 flex justify-between items-center relative z-10">
+                                        <div className="text-xs font-bold bg-white/10 px-4 py-2 rounded-xl flex items-center gap-2">USD/TWD: {fxRate.toFixed(2)}</div>
+                                    </div>
+                                    <div className="absolute top-[-30%] right-[-10%] w-64 h-64 bg-blue-600/20 rounded-full blur-[80px]"></div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    {Object.entries(catStyle).map(([key, cfg]) => (
+                                        <button key={key} onClick={() => setCurrentTab(key)} className="bg-white border border-slate-100 p-6 rounded-[2rem] text-left active:scale-95 transition-all shadow-sm">
+                                            <div className={`w-12 h-12 rounded-2xl ${cfg.color} flex items-center justify-center mb-4`}>
+                                                <Icon name={cfg.icon} className={cfg.text} />
+                                            </div>
+                                            <p className="text-slate-400 text-[10px] font-black uppercase mb-1">{cfg.label}</p>
+                                            <h3 className="font-black text-lg">{hideValues ? '••••' : `$${totals[key].toLocaleString()}`}</h3>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-20 text-slate-400 font-bold">
+                                <p>功能開發中...</p>
+                                <button onClick={() => setCurrentTab('home')} className="mt-4 text-blue-500">返回總覽</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
