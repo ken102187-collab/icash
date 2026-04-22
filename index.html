@@ -4,13 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>資產管理 Pro</title>
+    
     <!-- PWA Meta Tags -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="資產管理">
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 Lucide 圖示庫 -->
     <script src="https://unpkg.com/lucide@0.321.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
@@ -20,33 +21,54 @@
             font-family: 'Inter', sans-serif; 
             -webkit-tap-highlight-color: transparent;
             padding-top: env(safe-area-inset-top);
+            margin: 0;
+            background-color: #f8fafc;
         }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
         .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
         .animate-spin-slow { animation: spin 2s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         
-        /* 避免 PWA 模式下長按彈出選單 */
         * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
         input, select { -webkit-user-select: text; user-select: text; }
+
+        #error-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: white;
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            text-align: center;
+        }
+        canvas { width: 100% !important; height: 180px !important; }
     </style>
 </head>
-<body class="bg-[#f8fafc] text-slate-900 overflow-x-hidden">
+<body class="text-slate-900 overflow-x-hidden">
+
+    <div id="error-overlay">
+        <div class="bg-red-50 text-red-500 p-8 rounded-[2.5rem] mb-6">
+            <i data-lucide="shield-alert" class="w-16 h-16 mx-auto mb-4"></i>
+            <h2 class="font-black text-xl">系統初始化失敗</h2>
+            <p id="error-message" class="text-sm opacity-80 mt-2">環境配置尚未就緒</p>
+        </div>
+        <button onclick="window.location.reload()" class="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black shadow-xl">重新連接</button>
+    </div>
 
     <div id="app" class="min-h-screen pb-32">
-        <!-- 頂部導航 -->
         <header class="glass border-b border-slate-100 px-6 py-4 sticky top-0 z-30">
             <div class="max-w-md mx-auto flex justify-between items-center">
-                <div class="flex items-center gap-2">
-                    <h1 id="view-title" class="text-xl font-black">總資產</h1>
-                </div>
+                <h1 id="view-title" class="text-xl font-black text-slate-800">我的資產</h1>
                 <div class="flex gap-2">
                     <button id="privacy-btn" class="p-3 bg-slate-50 rounded-2xl text-slate-400 active:bg-slate-100">
                         <i data-lucide="eye" id="eye-icon"></i>
                     </button>
-                    <button id="sync-btn" class="p-3 bg-slate-50 rounded-2xl text-slate-400 relative active:bg-slate-100">
+                    <button id="sync-btn" class="p-3 bg-slate-50 rounded-2xl text-slate-400 relative">
                         <i data-lucide="refresh-cw" id="refresh-icon"></i>
-                        <span id="sync-badge" class="hidden absolute -bottom-1 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded-full font-bold">同步中</span>
+                        <span id="sync-badge" class="hidden absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full border-2 border-white"></span>
                     </button>
                     <button id="open-modal-btn" class="p-3 bg-blue-600 rounded-2xl text-white shadow-lg active:scale-95 transition-transform">
                         <i data-lucide="plus"></i>
@@ -55,39 +77,41 @@
             </div>
         </header>
 
-        <main class="max-w-md mx-auto p-6" id="main-content">
+        <main class="max-w-md mx-auto p-6">
             <!-- 總額卡片 -->
             <div class="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden mb-6">
-                <p class="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">估計資產淨值 (TWD)</p>
+                <p class="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">資產淨值估算 (TWD)</p>
                 <h2 id="total-amount" class="text-4xl font-black tracking-tighter truncate">$0</h2>
-                <div class="mt-8 flex justify-between items-center relative z-10">
-                    <button id="trends-btn" class="text-xs font-bold bg-white/10 px-4 py-2 rounded-xl flex items-center gap-2 active:scale-95">
-                        <i data-lucide="trending-up" class="w-4 h-4"></i> 歷史走勢
-                    </button>
-                    <span id="fx-display" class="text-[10px] font-bold text-slate-500">USD/TWD: --.--</span>
+                <div class="mt-4 flex justify-between items-center relative z-10">
+                    <div id="fx-display" class="text-[10px] font-bold text-slate-400">USD/TWD: 32.50</div>
                 </div>
                 <div class="absolute top-[-30%] right-[-10%] w-64 h-64 bg-blue-600/20 rounded-full blur-[80px]"></div>
             </div>
 
-            <!-- 分類網格 -->
-            <div id="category-grid" class="grid grid-cols-2 gap-4">
-                <!-- JS 動態渲染 -->
+            <!-- 趨勢圖卡片 -->
+            <div id="trend-section" class="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-black text-slate-800 text-sm flex items-center gap-2">
+                        <i data-lucide="line-chart" class="w-4 h-4 text-blue-500"></i> 資產趨勢
+                    </h3>
+                    <span class="text-[10px] font-bold text-slate-300 uppercase">最近 7 筆紀錄</span>
+                </div>
+                <div class="relative h-[180px]">
+                    <canvas id="assetChart"></canvas>
+                </div>
+            </div>
+
+            <div id="category-grid" class="grid grid-cols-1 gap-4">
+                <!-- 動態載入 -->
             </div>
         </main>
 
-        <!-- 底部導航 -->
-        <nav id="bottom-nav" class="fixed bottom-0 left-0 right-0 glass border-t border-slate-100 p-4 pb-8 safe-bottom flex justify-around z-40">
+        <nav class="fixed bottom-0 left-0 right-0 glass border-t border-slate-100 p-4 pb-8 safe-bottom flex justify-around z-40">
             <button data-tab="home" class="nav-item flex flex-col items-center gap-1 text-blue-600 font-bold">
-                <i data-lucide="layout-dashboard"></i><span class="text-[10px]">總覽</span>
+                <i data-lucide="layout-grid"></i><span class="text-[10px]">概覽</span>
             </button>
-            <button data-tab="tw_stock" class="nav-item flex flex-col items-center gap-1 text-slate-300">
-                <i data-lucide="trending-up"></i><span class="text-[10px]">台股</span>
-            </button>
-            <button data-tab="us_stock" class="nav-item flex flex-col items-center gap-1 text-slate-300">
-                <i data-lucide="globe"></i><span class="text-[10px]">美股</span>
-            </button>
-            <button data-tab="crypto" class="nav-item flex flex-col items-center gap-1 text-slate-300">
-                <i data-lucide="bitcoin"></i><span class="text-[10px]">幣圈</span>
+            <button data-tab="stock" class="nav-item flex flex-col items-center gap-1 text-slate-300">
+                <i data-lucide="trending-up"></i><span class="text-[10px]">證券</span>
             </button>
             <button data-tab="bank" class="nav-item flex flex-col items-center gap-1 text-slate-300">
                 <i data-lucide="landmark"></i><span class="text-[10px]">銀行</span>
@@ -95,24 +119,33 @@
         </nav>
     </div>
 
-    <!-- 新增 Modal -->
-    <div id="add-modal" class="hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-6">
+    <!-- 新增資產 Modal -->
+    <div id="add-modal" class="hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-sm p-0 sm:p-6">
         <div class="w-full max-w-sm bg-white rounded-t-[2.5rem] sm:rounded-[2.5rem] p-8 shadow-2xl">
-            <h3 class="text-xl font-black mb-6 text-center">新增資產項目</h3>
+            <h3 class="text-xl font-black mb-6 text-center text-slate-800">新增資產</h3>
             <div class="space-y-4">
-                <select id="asset-type" class="w-full bg-slate-50 p-4 rounded-xl font-bold outline-none border-0 ring-0">
-                    <option value="tw_stock">台股</option>
-                    <option value="us_stock">美股</option>
-                    <option value="crypto">幣圈</option>
-                    <option value="bank">銀行帳戶</option>
+                <select id="asset-type" class="w-full bg-slate-50 p-4 rounded-2xl font-bold border-none outline-none ring-2 ring-transparent focus:ring-blue-500 transition-all">
+                    <option value="tw_stock">台股 (TWD)</option>
+                    <option value="us_stock">美股 (USD)</option>
+                    <option value="crypto">加密貨幣 (USD)</option>
+                    <option value="bank">銀行帳戶 (TWD)</option>
                 </select>
-                <input id="asset-name" placeholder="顯示名稱 (如: 台積電)" class="w-full bg-slate-50 p-4 rounded-xl font-bold outline-none">
-                <input id="asset-symbol" placeholder="標的代號 (如: 2330.TW)" class="w-full bg-slate-50 p-4 rounded-xl font-bold outline-none uppercase">
-                <input id="asset-qty" type="number" inputmode="decimal" placeholder="持有數量 / 餘額" class="w-full bg-slate-50 p-4 rounded-xl font-bold outline-none">
                 
-                <div class="pt-4 space-y-3">
-                    <button id="confirm-add-btn" class="w-full bg-blue-600 text-white py-4 rounded-xl font-black shadow-lg active:scale-[0.98]">確認新增</button>
-                    <button id="close-modal-btn" class="w-full text-slate-300 font-bold text-sm py-2">取消</button>
+                <div id="field-name-container">
+                    <input id="asset-name" placeholder="項目名稱 (如：台積電)" class="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none">
+                </div>
+
+                <div id="field-symbol-container">
+                    <input id="asset-symbol" placeholder="標的代號 (如：2330.TW)" class="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none uppercase">
+                </div>
+
+                <div id="field-qty-container">
+                    <input id="asset-qty" type="number" inputmode="decimal" placeholder="持有數量" class="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none">
+                </div>
+                
+                <div class="pt-4 flex gap-3">
+                    <button id="close-modal-btn" class="flex-1 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black">取消</button>
+                    <button id="confirm-add-btn" class="flex-[2] bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg">儲存資產</button>
                 </div>
             </div>
         </div>
@@ -121,146 +154,114 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, setDoc, serverTimestamp, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 確保配置存在，避免 PWA 404 或崩潰
-        const getFirebaseConfig = () => {
+        function initSystem() {
             try {
+                if (typeof __firebase_config === 'undefined' || !__firebase_config) throw new Error("Config missing");
                 return JSON.parse(__firebase_config);
             } catch (e) {
-                console.error("Firebase config error:", e);
+                document.getElementById('error-overlay').style.display = 'flex';
                 return null;
             }
-        };
-
-        const firebaseConfig = getFirebaseConfig();
-        if (!firebaseConfig) {
-            document.body.innerHTML = '<div class="p-10 text-center font-bold">應用程式配置錯誤，請重新整理。</div>';
         }
 
-        const app = initializeApp(firebaseConfig);
+        const config = initSystem();
+        if (!config) throw new Error("Stop");
+
+        const app = initializeApp(config);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'asset-pwa-html-v1';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'asset-pro-pwa';
         const apiKey = ""; 
 
         let state = {
             user: null,
             assets: [],
+            history: [],
             fxRate: 32.5,
             isPrivacy: false,
             currentTab: 'home',
-            isUpdating: false
+            isUpdating: false,
+            chart: null
         };
 
-        function safeRefreshIcons() {
-            if (typeof lucide !== 'undefined' && lucide.createIcons) {
-                lucide.createIcons();
-            }
-        }
-
-        const initAuth = async () => {
+        window.onload = async () => {
+            if (window.lucide) lucide.createIcons();
+            
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
                     await signInAnonymously(auth);
                 }
-            } catch (error) {
-                console.error("Auth error:", error);
-            }
-        };
+            } catch (e) { console.error(e); }
 
-        window.addEventListener('load', () => {
-            safeRefreshIcons();
-            initAuth();
-            
             onAuthStateChanged(auth, (user) => {
                 if (user) {
                     state.user = user;
-                    initDataListeners();
-                    setupPWAUpdate();
+                    startListening();
                 }
             });
 
-            // 事件綁定
-            document.getElementById('confirm-add-btn').onclick = submitAsset;
+            // 初始化 Modal 欄位監聽
+            const typeSelect = document.getElementById('asset-type');
+            typeSelect.onchange = handleTypeChange;
+
             document.getElementById('open-modal-btn').onclick = () => toggleModal(true);
             document.getElementById('close-modal-btn').onclick = () => toggleModal(false);
-            document.getElementById('sync-btn').onclick = manualSync;
-            document.getElementById('privacy-btn').onclick = togglePrivacy;
+            document.getElementById('confirm-add-btn').onclick = submitAsset;
+            document.getElementById('privacy-btn').onclick = () => { state.isPrivacy = !state.isPrivacy; render(); };
+            document.getElementById('sync-btn').onclick = syncPrices;
             
             document.querySelectorAll('[data-tab]').forEach(btn => {
-                btn.onclick = () => switchTab(btn.getAttribute('data-tab'));
-            });
-        });
-
-        function initDataListeners() {
-            if (!state.user) return;
-            const assetsRef = collection(db, 'artifacts', appId, 'users', state.user.uid, 'assets');
-            onSnapshot(assetsRef, (snapshot) => {
-                state.assets = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                render();
-                checkAutoSync();
-            }, (err) => console.error("Firestore error:", err));
-        }
-
-        function setupPWAUpdate() {
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') checkAutoSync();
-            });
-        }
-
-        async function checkAutoSync() {
-            if (state.isUpdating || state.assets.length === 0) return;
-            const lastSync = state.assets[0]?.lastSync?.seconds * 1000 || 0;
-            if (Date.now() - lastSync > (4 * 60 * 60 * 1000)) await syncAllPrices();
-        }
-
-        async function manualSync() {
-            await syncAllPrices();
-        }
-
-        async function syncAllPrices() {
-            if (state.isUpdating || !state.user) return;
-            state.isUpdating = true;
-            updateSyncUI(true);
-
-            try {
-                const fxRes = await callGemini("獲取目前 USD/TWD 匯率。回傳 JSON: {\"rate\": 數字}");
-                if (fxRes?.rate) state.fxRate = fxRes.rate;
-
-                let totalTWD = 0;
-                for (const asset of state.assets) {
-                    if (asset.type === 'bank') {
-                        totalTWD += (asset.balance || 0);
-                        continue;
-                    }
-                    const priceRes = await callGemini(`獲取 ${asset.symbol} 最新收盤價。回傳 JSON: {"price": 數字, "currency": "TWD"|"USD"}`);
-                    if (priceRes?.price) {
-                        const assetRef = doc(db, 'artifacts', appId, 'users', state.user.uid, 'assets', asset.id);
-                        await updateDoc(assetRef, {
-                            lastPrice: priceRes.price,
-                            currency: priceRes.currency,
-                            lastSync: serverTimestamp()
-                        });
-                        const rate = priceRes.currency === 'USD' ? state.fxRate : 1;
-                        totalTWD += priceRes.price * (asset.quantity || 0) * rate;
-                    }
+                btn.onclick = () => {
+                    state.currentTab = btn.dataset.tab;
+                    document.querySelectorAll('.nav-item').forEach(i => i.classList.replace('text-blue-600', 'text-slate-300'));
+                    btn.classList.replace('text-slate-300', 'text-blue-600');
+                    document.getElementById('trend-section').classList.toggle('hidden', state.currentTab !== 'home');
+                    render();
                 }
-                const historyRef = collection(db, 'artifacts', appId, 'users', state.user.uid, 'history');
-                await addDoc(historyRef, { total: totalTWD, timestamp: serverTimestamp() });
-            } catch (e) {
-                console.error("Sync error:", e);
-            } finally {
-                state.isUpdating = false;
-                updateSyncUI(false);
-                render();
+            });
+        };
+
+        function handleTypeChange() {
+            const type = document.getElementById('asset-type').value;
+            const symbolField = document.getElementById('field-symbol-container');
+            const qtyInput = document.getElementById('asset-qty');
+            const nameInput = document.getElementById('asset-name');
+
+            if (type === 'bank') {
+                symbolField.classList.add('hidden');
+                nameInput.placeholder = "銀行名稱 (如：玉山銀行)";
+                qtyInput.placeholder = "帳戶餘額 (TWD)";
+            } else {
+                symbolField.classList.remove('hidden');
+                nameInput.placeholder = "項目名稱 (如：台積電)";
+                qtyInput.placeholder = "持有數量";
             }
         }
 
-        async function callGemini(prompt) {
+        function startListening() {
+            onSnapshot(collection(db, 'artifacts', appId, 'users', state.user.uid, 'assets'), (snap) => {
+                state.assets = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                render();
+            });
+
+            onSnapshot(collection(db, 'artifacts', appId, 'users', state.user.uid, 'history'), (snap) => {
+                state.history = snap.docs.map(d => d.data()).sort((a, b) => new Date(a.date) - new Date(b.date));
+                updateChart();
+            });
+        }
+
+        async function syncPrices() {
+            if (state.isUpdating) return;
+            state.isUpdating = true;
+            document.getElementById('refresh-icon').classList.add('animate-spin-slow');
+            document.getElementById('sync-badge').classList.remove('hidden');
+
             try {
+                const prompt = `獲取目前 USD/TWD 匯率，並獲取以下代號的最新價格：${state.assets.filter(a => a.type !== 'bank').map(a => a.symbol).join(',')}. 回傳 JSON: {"rate": 32.5, "prices": {"代號": 價格}}`;
                 const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -271,138 +272,140 @@
                     })
                 });
                 const data = await res.json();
-                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!text) return null;
-                return JSON.parse(text.match(/\{.*\}/s)[0]);
-            } catch (err) {
-                return null;
+                const result = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
+
+                if (result.rate) state.fxRate = result.rate;
+                
+                let totalTWD = 0;
+                for (const asset of state.assets) {
+                    let currentVal = 0;
+                    if (asset.type === 'bank') {
+                        currentVal = asset.balance;
+                    } else {
+                        const price = result.prices?.[asset.symbol.toUpperCase()] || result.prices?.[asset.symbol] || asset.lastPrice;
+                        const ref = doc(db, 'artifacts', appId, 'users', state.user.uid, 'assets', asset.id);
+                        await updateDoc(ref, { lastPrice: price, lastSync: serverTimestamp() });
+                        currentVal = price * asset.quantity;
+                    }
+                    totalTWD += (currentVal * (asset.currency === 'USD' ? state.fxRate : 1));
+                }
+
+                const today = new Date().toISOString().split('T')[0];
+                await setDoc(doc(db, 'artifacts', appId, 'users', state.user.uid, 'history', today), {
+                    date: today,
+                    total: totalTWD
+                });
+
+            } catch (e) { console.error(e); } finally {
+                state.isUpdating = false;
+                document.getElementById('refresh-icon').classList.remove('animate-spin-slow');
+                document.getElementById('sync-badge').classList.add('hidden');
+                render();
             }
         }
 
+        function updateChart() {
+            const canvas = document.getElementById('assetChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const data = state.history.slice(-7); 
+            
+            if (state.chart) state.chart.destroy();
+
+            state.chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.date.split('-').slice(1).join('/')),
+                    datasets: [{
+                        label: '總資產',
+                        data: data.map(d => d.total),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#fff',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { display: false },
+                        x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' }, color: '#94a3b8' } }
+                    }
+                }
+            });
+        }
+
+        function render() {
+            const grid = document.getElementById('category-grid');
+            grid.innerHTML = '';
+
+            let totalTWD = 0;
+            state.assets.forEach(a => {
+                const val = a.type === 'bank' ? a.balance : (a.lastPrice * a.quantity);
+                const rate = a.currency === 'USD' ? state.fxRate : 1;
+                totalTWD += (val * rate);
+            });
+
+            document.getElementById('total-amount').innerText = state.isPrivacy ? '••••••' : `$${Math.round(totalTWD).toLocaleString()}`;
+            document.getElementById('fx-display').innerText = `USD/TWD: ${state.fxRate.toFixed(2)}`;
+
+            const filtered = state.currentTab === 'home' ? state.assets : state.assets.filter(a => a.type.includes(state.currentTab));
+
+            filtered.forEach(a => {
+                const card = document.createElement('div');
+                card.className = "bg-white p-6 rounded-[1.5rem] border border-slate-100 flex justify-between items-center shadow-sm";
+                const subtotal = a.type === 'bank' ? a.balance : (a.lastPrice * a.quantity);
+                const rate = a.currency === 'USD' ? state.fxRate : 1;
+                
+                card.innerHTML = `
+                    <div>
+                        <h4 class="font-black text-slate-800">${a.name}</h4>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase mt-0.5">${a.symbol || 'CASH'} • ${a.type === 'bank' ? '餘額' : '數量'}: ${a.type === 'bank' ? a.balance : a.quantity}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-black text-lg text-slate-900">${state.isPrivacy ? '••••' : '$' + Math.round(subtotal * rate).toLocaleString()}</p>
+                        <button onclick="window.deleteItem('${a.id}')" class="text-slate-200 mt-1"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+            if (window.lucide) lucide.createIcons();
+        }
+
         async function submitAsset() {
-            if (!state.user) return;
             const name = document.getElementById('asset-name').value;
             const type = document.getElementById('asset-type').value;
             const symbol = document.getElementById('asset-symbol').value;
             const qty = parseFloat(document.getElementById('asset-qty').value || 0);
-
             if (!name) return;
-
             try {
                 await addDoc(collection(db, 'artifacts', appId, 'users', state.user.uid, 'assets'), {
-                    name, type, symbol,
+                    name, type, symbol: type === 'bank' ? '' : symbol,
                     quantity: type === 'bank' ? 0 : qty,
                     balance: type === 'bank' ? qty : 0,
                     lastPrice: 0,
                     lastSync: serverTimestamp(),
-                    currency: (type === 'us_stock' || type === 'crypto') ? 'USD' : 'TWD'
+                    currency: (type === 'tw_stock' || type === 'bank') ? 'TWD' : 'USD'
                 });
-                
-                document.getElementById('asset-name').value = '';
-                document.getElementById('asset-symbol').value = '';
-                document.getElementById('asset-qty').value = '';
                 toggleModal(false);
+                document.querySelectorAll('#add-modal input').forEach(i => i.value = '');
             } catch (e) { console.error(e); }
         }
 
-        function render() {
-            const categories = {
-                tw_stock: { label: '台股', icon: 'trending-up', color: 'text-emerald-500', bg: 'bg-emerald-50' },
-                us_stock: { label: '美股', icon: 'globe', color: 'text-blue-500', bg: 'bg-blue-50' },
-                crypto: { label: '幣圈', icon: 'bitcoin', color: 'text-amber-500', bg: 'bg-amber-50' },
-                bank: { label: '銀行', icon: 'landmark', color: 'text-slate-500', bg: 'bg-slate-50' }
-            };
-
-            const totals = { total: 0, tw_stock: 0, us_stock: 0, crypto: 0, bank: 0 };
-            state.assets.forEach(a => {
-                const val = a.type === 'bank' ? (a.balance || 0) : ((a.lastPrice || 0) * (a.quantity || 0));
-                const rate = a.currency === 'USD' ? state.fxRate : 1;
-                totals.total += (val * rate);
-                totals[a.type] += (val * rate);
-            });
-
-            document.getElementById('total-amount').innerText = state.isPrivacy ? '••••••' : `$${Math.round(totals.total).toLocaleString()}`;
-            document.getElementById('fx-display').innerText = `USD/TWD: ${state.fxRate.toFixed(2)}`;
-
-            const grid = document.getElementById('category-grid');
-            grid.innerHTML = '';
-            
-            if (state.currentTab === 'home') {
-                Object.entries(categories).forEach(([key, cfg]) => {
-                    const card = document.createElement('button');
-                    card.className = "bg-white border border-slate-100 p-6 rounded-[2rem] text-left active:scale-95 transition-all shadow-sm";
-                    card.onclick = () => switchTab(key);
-                    card.innerHTML = `
-                        <div class="w-12 h-12 rounded-2xl ${cfg.bg} flex items-center justify-center mb-4"><i data-lucide="${cfg.icon}" class="${cfg.color}"></i></div>
-                        <p class="text-slate-400 text-[10px] font-black uppercase mb-1">${cfg.label}</p>
-                        <h3 class="font-black text-lg">${state.isPrivacy ? '••••' : '$' + Math.round(totals[key]).toLocaleString()}</h3>
-                    `;
-                    grid.appendChild(card);
-                });
-            } else {
-                state.assets.filter(a => a.type === state.currentTab).forEach(a => {
-                    const subtotal = a.type === 'bank' ? (a.balance || 0) : ((a.lastPrice || 0) * (a.quantity || 0));
-                    const rate = a.currency === 'USD' ? state.fxRate : 1;
-                    const item = document.createElement('div');
-                    item.className = "col-span-2 bg-white rounded-[1.5rem] p-6 border border-slate-100 flex justify-between items-center shadow-sm";
-                    item.innerHTML = `
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2">
-                                <h4 class="font-black text-slate-800">${a.name}</h4>
-                                <span class="text-[9px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase">${a.symbol || 'CASH'}</span>
-                            </div>
-                            <p class="text-[11px] font-bold text-slate-400 mt-1">${a.type === 'bank' ? '餘額' : '數量'}: ${a.type === 'bank' ? a.balance : a.quantity}</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="text-[10px] font-black text-slate-300 uppercase">現值(TWD)</p>
-                            <p class="font-black text-lg text-slate-900">${state.isPrivacy ? '••••' : '$' + Math.round(subtotal * rate).toLocaleString()}</p>
-                            <button id="del-${a.id}" class="text-slate-200 mt-1 hover:text-red-400 active:text-red-600 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                        </div>
-                    `;
-                    grid.appendChild(item);
-                    document.getElementById(`del-${a.id}`).onclick = (e) => { e.stopPropagation(); deleteAsset(a.id); };
-                });
+        window.deleteItem = async (id) => {
+            if (confirm("確定刪除此資產？")) {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', state.user.uid, 'assets', id));
             }
-            safeRefreshIcons();
-        }
+        };
 
-        function switchTab(tab) {
-            state.currentTab = tab;
-            document.getElementById('view-title').innerText = tab === 'home' ? '總資產' : '資產明細';
-            document.querySelectorAll('.nav-item').forEach(el => {
-                const isActive = el.getAttribute('data-tab') === tab;
-                el.className = `nav-item flex flex-col items-center gap-1 ${isActive ? 'text-blue-600 font-bold' : 'text-slate-300'}`;
-            });
-            render();
-        }
-
-        function togglePrivacy() { 
-            state.isPrivacy = !state.isPrivacy;
-            render(); 
-        }
-
-        function toggleModal(show) {
-            document.getElementById('add-modal').classList.toggle('hidden', !show);
-        }
-
-        async function deleteAsset(id) {
-            if (confirm("確定要刪除此資產嗎？")) {
-                try {
-                    await deleteDoc(doc(db, 'artifacts', appId, 'users', state.user.uid, 'assets', id));
-                } catch (err) { console.error(err); }
-            }
-        }
-
-        function updateSyncUI(loading) {
-            const icon = document.getElementById('refresh-icon');
-            const badge = document.getElementById('sync-badge');
-            if (loading) {
-                icon.classList.add('animate-spin-slow');
-                badge.classList.remove('hidden');
-            } else {
-                icon.classList.remove('animate-spin-slow');
-                badge.classList.add('hidden');
-            }
+        function toggleModal(show) { 
+            document.getElementById('add-modal').classList.toggle('hidden', !show); 
+            if (show) handleTypeChange(); // 重設欄位狀態
         }
     </script>
 </body>
