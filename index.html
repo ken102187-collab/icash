@@ -3,94 +3,144 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>icash 資產管理</title>
+    <title>icash AI 資產管理</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@0.321.0"></script>
     <style>
-        body { background-color: #f8fafc; margin: 0; font-family: sans-serif; }
-        #error-display { color: red; padding: 20px; font-family: monospace; display: none; }
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
     </style>
 </head>
 <body>
-    <div id="error-display"></div>
-    
-    <div id="root">
-        <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; color: #64748b;">
-            <div id="loading-spinner" style="border: 4px solid #e2e8f0; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animate: spin 1s linear infinite;"></div>
-            <p style="margin-top: 15px; font-weight: bold;">icash 啟動中...</p>
-        </div>
-    </div>
+    <div id="root"></div>
 
     <script type="text/babel">
-        // 錯誤監聽：防止空白頁
-        window.onerror = function(msg, url, line) {
-            const errDiv = document.getElementById('error-display');
-            errDiv.style.display = 'block';
-            errDiv.innerHTML = `運行出錯: ${msg} <br/> 行號: ${line}`;
-            return false;
-        };
-
-        const { useState, useMemo } = React;
+        const { useState, useEffect, useMemo } = React;
 
         function App() {
+            // 1. 狀態管理
+            const [assets, setAssets] = useState(() => {
+                const saved = localStorage.getItem('icash_assets');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [showAddModal, setShowAddModal] = useState(false);
             const [fxRate, setFxRate] = useState(32.45);
             const [syncStatus, setSyncStatus] = useState('');
+            const [formData, setFormData] = useState({ type: 'tw_stock', name: '', amount: '' });
+
+            // 你的 Gemini API Key
             const apiKey = "AIzaSyDV4ePstEkY2nZJqavAyzzYrHfI2cxSIp8";
 
+            // 2. 儲存至手機本地
+            useEffect(() => {
+                localStorage.setItem('icash_assets', JSON.stringify(assets));
+            }, [assets]);
+
+            // 3. 計算總額
+            const totalNetWorth = useMemo(() => {
+                return assets.reduce((sum, item) => {
+                    const val = parseFloat(item.amount) || 0;
+                    return sum + (item.type === 'us_stock' || item.type === 'crypto' ? val * fxRate : val);
+                }, 0);
+            }, [assets, fxRate]);
+
+            // 4. AI 同步匯率
             const handleSync = async () => {
-                setSyncStatus('更新匯率中...');
+                setSyncStatus('同步中...');
                 try {
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: "USD/TWD rate? Return JSON: {\"rate\": number}" }] }]
-                        })
+                        body: JSON.stringify({ contents: [{ parts: [{ text: "USD/TWD rate? JSON: {\"rate\": number}" }] }] })
                     });
                     const data = await res.json();
                     const text = data.candidates[0].content.parts[0].text;
                     const json = JSON.parse(text.match(/\{.*\}/s)[0]);
                     if (json.rate) setFxRate(json.rate);
-                    setSyncStatus('更新成功');
-                } catch (e) {
-                    setSyncStatus('API 錯誤');
-                }
+                    setSyncStatus('成功');
+                } catch (e) { setSyncStatus('錯誤'); }
                 setTimeout(() => setSyncStatus(''), 2000);
             };
 
+            // 5. 新增資產邏輯
+            const addAsset = () => {
+                if (!formData.name || !formData.amount) return alert('請填寫完整資訊');
+                setAssets([...assets, { ...formData, id: Date.now() }]);
+                setFormData({ type: 'tw_stock', name: '', amount: '' });
+                setShowAddModal(false);
+            };
+
             return (
-                <div className="max-w-md mx-auto min-h-screen bg-slate-50 flex flex-col p-6">
-                    <header className="flex justify-between items-center mb-8">
-                        <h1 className="text-3xl font-black text-slate-900">icash</h1>
-                        <button onClick={handleSync} className="bg-white p-3 rounded-2xl shadow-sm active:scale-95 transition-all text-slate-500 relative">
-                            更新匯率 {syncStatus && <span className="absolute -bottom-8 right-0 text-xs text-blue-500 font-bold">{syncStatus}</span>}
+                <div className="max-w-md mx-auto min-h-screen flex flex-col pb-24">
+                    {/* Header */}
+                    <header className="p-6 flex justify-between items-center glass sticky top-0 z-20">
+                        <h1 className="text-2xl font-black text-slate-800 tracking-tighter">icash</h1>
+                        <button onClick={handleSync} className="text-xs font-bold bg-white px-3 py-2 rounded-xl shadow-sm border border-slate-100">
+                            匯率 {fxRate} {syncStatus && `(${syncStatus})`}
                         </button>
                     </header>
 
-                    <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl mb-6">
-                        <p className="text-slate-400 text-xs font-bold uppercase mb-2">我的總資產 (TWD)</p>
-                        <h2 className="text-4xl font-black mb-4">$0</h2>
-                        <div className="text-[10px] bg-white/10 inline-block px-3 py-1 rounded-full text-slate-300">
-                            目前匯率: {fxRate}
+                    {/* 總覽卡片 */}
+                    <div className="p-6">
+                        <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden">
+                            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">資產淨值 (TWD)</p>
+                            <h2 className="text-4xl font-black">${Math.round(totalNetWorth).toLocaleString()}</h2>
+                            <div className="absolute -right-4 -top-4 w-32 h-32 bg-blue-600/20 rounded-full blur-3xl"></div>
+                        </div>
+
+                        {/* 資產清單 */}
+                        <div className="mt-8 space-y-3">
+                            <h3 className="font-bold text-slate-400 text-xs uppercase px-2">持倉清單</h3>
+                            {assets.length === 0 ? (
+                                <div className="text-center py-10 text-slate-300 font-bold italic">尚無資料，點擊下方 + 新增</div>
+                            ) : (
+                                assets.map(item => (
+                                    <div key={item.id} className="bg-white p-5 rounded-3xl shadow-sm flex justify-between items-center border border-white">
+                                        <div>
+                                            <p className="text-[10px] font-black text-blue-500 uppercase">{item.type.replace('_', ' ')}</p>
+                                            <p className="font-bold text-slate-700">{item.name}</p>
+                                        </div>
+                                        <p className="font-black text-slate-900">
+                                            ${parseFloat(item.amount).toLocaleString()}
+                                        </p>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        {['台股', '美股', '加密貨幣', '銀行'].map(cat => (
-                            <div key={cat} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-                                <p className="text-slate-400 text-[10px] font-black mb-1">{cat}</p>
-                                <p className="text-lg font-bold text-slate-300">未設定</p>
-                            </div>
-                        ))}
-                    </div>
+                    {/* 下導覽列 */}
+                    <nav className="fixed bottom-0 left-0 right-0 glass border-t border-slate-100 p-4 safe-bottom flex justify-around items-center z-30">
+                        <button className="text-blue-600 font-bold text-sm">總覽</button>
+                        <button onClick={() => setShowAddModal(true)} className="bg-blue-600 w-14 h-14 rounded-2xl text-white text-3xl shadow-lg shadow-blue-200 flex items-center justify-center -translate-y-6 active:scale-90 transition-all">+</button>
+                        <button onClick={() => { if(confirm('確定清空？')) setAssets([]) }} className="text-slate-300 text-sm">清空</button>
+                    </nav>
 
-                    <div className="mt-10 p-6 bg-blue-50 rounded-3xl border border-blue-100">
-                        <p className="text-blue-800 text-sm font-bold">💡 提示</p>
-                        <p className="text-blue-600 text-xs mt-1">請填寫 Firebase Config 以啟用儲存功能。</p>
-                    </div>
+                    {/* 新增 Modal */}
+                    {showAddModal && (
+                        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm">
+                            <div className="bg-white w-full max-w-md rounded-t-[3rem] p-8 animate-in slide-in-from-bottom duration-300">
+                                <div className="w-12 h-1.5 bg-slate-100 rounded-full mx-auto mb-8"></div>
+                                <h3 className="text-xl font-black mb-6">新增資產</h3>
+                                <div className="space-y-4">
+                                    <select className="w-full bg-slate-50 p-4 rounded-2xl font-bold border-none outline-none" value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}>
+                                        <option value="tw_stock">台股 (TWD)</option>
+                                        <option value="us_stock">美股 (USD)</option>
+                                        <option value="crypto">幣圈 (USD)</option>
+                                        <option value="bank">銀行存款 (TWD)</option>
+                                    </select>
+                                    <input placeholder="資產名稱" className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                    <input type="number" placeholder="金額 / 價值" className="w-full bg-slate-50 p-4 rounded-2xl font-bold outline-none" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} />
+                                    <button onClick={addAsset} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black shadow-xl shadow-blue-100 active:scale-95 transition-all">確認儲存</button>
+                                    <button onClick={() => setShowAddModal(false)} className="w-full py-3 text-slate-400 font-bold text-sm">取消</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
