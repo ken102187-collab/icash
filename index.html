@@ -2,40 +2,53 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>資產管理 Pro</title>
+    <!-- PWA Meta Tags -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 Lucide 圖示庫 -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.321.0/dist/umd/lucide.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            -webkit-tap-highlight-color: transparent;
+            padding-top: env(safe-area-inset-top);
+        }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
         .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
         .animate-spin-slow { animation: spin 2s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        /* 避免 PWA 模式下長按彈出選單 */
+        * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        input, select { -webkit-user-select: text; user-select: text; }
     </style>
 </head>
 <body class="bg-[#f8fafc] text-slate-900 overflow-x-hidden">
 
     <div id="app" class="min-h-screen pb-32">
         <!-- 頂部導航 -->
-        <header class="glass border-b border-slate-100 px-6 py-6 sticky top-0 z-30">
+        <header class="glass border-b border-slate-100 px-6 py-4 sticky top-0 z-30">
             <div class="max-w-md mx-auto flex justify-between items-center">
                 <div class="flex items-center gap-2">
                     <h1 id="view-title" class="text-xl font-black">總資產</h1>
                 </div>
                 <div class="flex gap-2">
-                    <button id="privacy-btn" class="p-3 bg-slate-50 rounded-2xl text-slate-400">
+                    <button id="privacy-btn" class="p-3 bg-slate-50 rounded-2xl text-slate-400 active:bg-slate-100">
                         <i data-lucide="eye" id="eye-icon"></i>
                     </button>
-                    <button id="sync-btn" class="p-3 bg-slate-50 rounded-2xl text-slate-400 relative">
+                    <button id="sync-btn" class="p-3 bg-slate-50 rounded-2xl text-slate-400 relative active:bg-slate-100">
                         <i data-lucide="refresh-cw" id="refresh-icon"></i>
                         <span id="sync-badge" class="hidden absolute -bottom-1 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded-full font-bold">同步中</span>
                     </button>
-                    <button id="open-modal-btn" class="p-3 bg-blue-600 rounded-2xl text-white shadow-lg">
+                    <button id="open-modal-btn" class="p-3 bg-blue-600 rounded-2xl text-white shadow-lg active:scale-95 transition-transform">
                         <i data-lucide="plus"></i>
                     </button>
                 </div>
@@ -46,12 +59,12 @@
             <!-- 總額卡片 -->
             <div class="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden mb-6">
                 <p class="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">估計資產淨值 (TWD)</p>
-                <h2 id="total-amount" class="text-5xl font-black tracking-tighter truncate">$0</h2>
+                <h2 id="total-amount" class="text-4xl font-black tracking-tighter truncate">$0</h2>
                 <div class="mt-8 flex justify-between items-center relative z-10">
                     <button id="trends-btn" class="text-xs font-bold bg-white/10 px-4 py-2 rounded-xl flex items-center gap-2 active:scale-95">
                         <i data-lucide="trending-up" class="w-4 h-4"></i> 歷史走勢
                     </button>
-                    <span id="fx-display" class="text-[10px] font-bold text-slate-500">USD/TWD: 32.50</span>
+                    <span id="fx-display" class="text-[10px] font-bold text-slate-500">USD/TWD: --.--</span>
                 </div>
                 <div class="absolute top-[-30%] right-[-10%] w-64 h-64 bg-blue-600/20 rounded-full blur-[80px]"></div>
             </div>
@@ -84,10 +97,10 @@
 
     <!-- 新增 Modal -->
     <div id="add-modal" class="hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm p-0 sm:p-6">
-        <div class="w-full max-w-sm bg-white rounded-t-[2.5rem] sm:rounded-[2.5rem] p-8">
+        <div class="w-full max-w-sm bg-white rounded-t-[2.5rem] sm:rounded-[2.5rem] p-8 shadow-2xl">
             <h3 class="text-xl font-black mb-6 text-center">新增資產項目</h3>
             <div class="space-y-4">
-                <select id="asset-type" class="w-full bg-slate-50 p-4 rounded-xl font-bold outline-none">
+                <select id="asset-type" class="w-full bg-slate-50 p-4 rounded-xl font-bold outline-none border-0 ring-0">
                     <option value="tw_stock">台股</option>
                     <option value="us_stock">美股</option>
                     <option value="crypto">幣圈</option>
@@ -95,10 +108,10 @@
                 </select>
                 <input id="asset-name" placeholder="顯示名稱 (如: 台積電)" class="w-full bg-slate-50 p-4 rounded-xl font-bold outline-none">
                 <input id="asset-symbol" placeholder="標的代號 (如: 2330.TW)" class="w-full bg-slate-50 p-4 rounded-xl font-bold outline-none uppercase">
-                <input id="asset-qty" type="number" placeholder="持有數量 / 餘額" class="w-full bg-slate-50 p-4 rounded-xl font-bold outline-none">
+                <input id="asset-qty" type="number" inputmode="decimal" placeholder="持有數量 / 餘額" class="w-full bg-slate-50 p-4 rounded-xl font-bold outline-none">
                 
                 <div class="pt-4 space-y-3">
-                    <button id="confirm-add-btn" class="w-full bg-blue-600 text-white py-4 rounded-xl font-black shadow-lg">確認新增</button>
+                    <button id="confirm-add-btn" class="w-full bg-blue-600 text-white py-4 rounded-xl font-black shadow-lg active:scale-[0.98]">確認新增</button>
                     <button id="close-modal-btn" class="w-full text-slate-300 font-bold text-sm py-2">取消</button>
                 </div>
             </div>
@@ -107,10 +120,24 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // 確保配置存在，避免 PWA 404 或崩潰
+        const getFirebaseConfig = () => {
+            try {
+                return JSON.parse(__firebase_config);
+            } catch (e) {
+                console.error("Firebase config error:", e);
+                return null;
+            }
+        };
+
+        const firebaseConfig = getFirebaseConfig();
+        if (!firebaseConfig) {
+            document.body.innerHTML = '<div class="p-10 text-center font-bold">應用程式配置錯誤，請重新整理。</div>';
+        }
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
@@ -126,40 +153,45 @@
             isUpdating: false
         };
 
-        // 安全初始化 Lucide
         function safeRefreshIcons() {
             if (typeof lucide !== 'undefined' && lucide.createIcons) {
                 lucide.createIcons();
             }
         }
 
-        // --- 初始化應用 ---
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth error:", error);
+            }
+        };
+
         window.addEventListener('load', () => {
             safeRefreshIcons();
+            initAuth();
             
-            // Firebase Auth 狀態監聽
             onAuthStateChanged(auth, (user) => {
                 if (user) {
                     state.user = user;
                     initDataListeners();
                     setupPWAUpdate();
-                } else {
-                    signInAnonymously(auth).catch(err => console.error("匿名登入失敗:", err));
                 }
             });
 
-            // --- 綁定事件監聽器 ---
-            document.getElementById('confirm-add-btn').addEventListener('click', submitAsset);
-            document.getElementById('open-modal-btn').addEventListener('click', () => toggleModal(true));
-            document.getElementById('close-modal-btn').addEventListener('click', () => toggleModal(false));
-            document.getElementById('sync-btn').addEventListener('click', manualSync);
-            document.getElementById('privacy-btn').addEventListener('click', togglePrivacy);
+            // 事件綁定
+            document.getElementById('confirm-add-btn').onclick = submitAsset;
+            document.getElementById('open-modal-btn').onclick = () => toggleModal(true);
+            document.getElementById('close-modal-btn').onclick = () => toggleModal(false);
+            document.getElementById('sync-btn').onclick = manualSync;
+            document.getElementById('privacy-btn').onclick = togglePrivacy;
             
             document.querySelectorAll('[data-tab]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const tab = btn.getAttribute('data-tab');
-                    switchTab(tab);
-                });
+                btn.onclick = () => switchTab(btn.getAttribute('data-tab'));
             });
         });
 
@@ -170,23 +202,19 @@
                 state.assets = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                 render();
                 checkAutoSync();
-            }, (error) => console.error("Firestore 監聽錯誤:", error));
+            }, (err) => console.error("Firestore error:", err));
         }
 
         function setupPWAUpdate() {
             document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') {
-                    checkAutoSync();
-                }
+                if (document.visibilityState === 'visible') checkAutoSync();
             });
         }
 
         async function checkAutoSync() {
             if (state.isUpdating || state.assets.length === 0) return;
             const lastSync = state.assets[0]?.lastSync?.seconds * 1000 || 0;
-            if (Date.now() - lastSync > (4 * 60 * 60 * 1000)) {
-                await syncAllPrices();
-            }
+            if (Date.now() - lastSync > (4 * 60 * 60 * 1000)) await syncAllPrices();
         }
 
         async function manualSync() {
@@ -223,10 +251,11 @@
                 const historyRef = collection(db, 'artifacts', appId, 'users', state.user.uid, 'history');
                 await addDoc(historyRef, { total: totalTWD, timestamp: serverTimestamp() });
             } catch (e) {
-                console.error("同步數據時發生錯誤:", e);
+                console.error("Sync error:", e);
             } finally {
                 state.isUpdating = false;
                 updateSyncUI(false);
+                render();
             }
         }
 
@@ -246,22 +275,16 @@
                 if (!text) return null;
                 return JSON.parse(text.match(/\{.*\}/s)[0]);
             } catch (err) {
-                console.error("API 請求錯誤:", err);
                 return null;
             }
         }
 
         async function submitAsset() {
             if (!state.user) return;
-            const nameEl = document.getElementById('asset-name');
-            const typeEl = document.getElementById('asset-type');
-            const symbolEl = document.getElementById('asset-symbol');
-            const qtyEl = document.getElementById('asset-qty');
-
-            const name = nameEl.value;
-            const type = typeEl.value;
-            const symbol = symbolEl.value;
-            const qty = parseFloat(qtyEl.value || 0);
+            const name = document.getElementById('asset-name').value;
+            const type = document.getElementById('asset-type').value;
+            const symbol = document.getElementById('asset-symbol').value;
+            const qty = parseFloat(document.getElementById('asset-qty').value || 0);
 
             if (!name) return;
 
@@ -275,13 +298,11 @@
                     currency: (type === 'us_stock' || type === 'crypto') ? 'USD' : 'TWD'
                 });
                 
-                nameEl.value = '';
-                symbolEl.value = '';
-                qtyEl.value = '';
+                document.getElementById('asset-name').value = '';
+                document.getElementById('asset-symbol').value = '';
+                document.getElementById('asset-qty').value = '';
                 toggleModal(false);
-            } catch (e) { 
-                console.error("儲存資產錯誤:", e); 
-            }
+            } catch (e) { console.error(e); }
         }
 
         function render() {
@@ -309,7 +330,7 @@
             if (state.currentTab === 'home') {
                 Object.entries(categories).forEach(([key, cfg]) => {
                     const card = document.createElement('button');
-                    card.className = "bg-white border border-slate-100 p-6 rounded-[2rem] text-left active:scale-95 transition-all";
+                    card.className = "bg-white border border-slate-100 p-6 rounded-[2rem] text-left active:scale-95 transition-all shadow-sm";
                     card.onclick = () => switchTab(key);
                     card.innerHTML = `
                         <div class="w-12 h-12 rounded-2xl ${cfg.bg} flex items-center justify-center mb-4"><i data-lucide="${cfg.icon}" class="${cfg.color}"></i></div>
@@ -323,7 +344,7 @@
                     const subtotal = a.type === 'bank' ? (a.balance || 0) : ((a.lastPrice || 0) * (a.quantity || 0));
                     const rate = a.currency === 'USD' ? state.fxRate : 1;
                     const item = document.createElement('div');
-                    item.className = "col-span-2 bg-white rounded-[1.5rem] p-6 border border-slate-100 flex justify-between items-center";
+                    item.className = "col-span-2 bg-white rounded-[1.5rem] p-6 border border-slate-100 flex justify-between items-center shadow-sm";
                     item.innerHTML = `
                         <div class="flex-1">
                             <div class="flex items-center gap-2">
@@ -335,11 +356,11 @@
                         <div class="text-right">
                             <p class="text-[10px] font-black text-slate-300 uppercase">現值(TWD)</p>
                             <p class="font-black text-lg text-slate-900">${state.isPrivacy ? '••••' : '$' + Math.round(subtotal * rate).toLocaleString()}</p>
-                            <button id="del-${a.id}" class="text-slate-200 mt-1 hover:text-red-400 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            <button id="del-${a.id}" class="text-slate-200 mt-1 hover:text-red-400 active:text-red-600 transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                         </div>
                     `;
                     grid.appendChild(item);
-                    document.getElementById(`del-${a.id}`).addEventListener('click', () => deleteAsset(a.id));
+                    document.getElementById(`del-${a.id}`).onclick = (e) => { e.stopPropagation(); deleteAsset(a.id); };
                 });
             }
             safeRefreshIcons();
@@ -347,11 +368,10 @@
 
         function switchTab(tab) {
             state.currentTab = tab;
+            document.getElementById('view-title').innerText = tab === 'home' ? '總資產' : '資產明細';
             document.querySelectorAll('.nav-item').forEach(el => {
                 const isActive = el.getAttribute('data-tab') === tab;
-                el.classList.toggle('text-blue-600', isActive);
-                el.classList.toggle('font-bold', isActive);
-                el.classList.toggle('text-slate-300', !isActive);
+                el.className = `nav-item flex flex-col items-center gap-1 ${isActive ? 'text-blue-600 font-bold' : 'text-slate-300'}`;
             });
             render();
         }
@@ -369,7 +389,7 @@
             if (confirm("確定要刪除此資產嗎？")) {
                 try {
                     await deleteDoc(doc(db, 'artifacts', appId, 'users', state.user.uid, 'assets', id));
-                } catch (err) { console.error("刪除失敗:", err); }
+                } catch (err) { console.error(err); }
             }
         }
 
@@ -384,9 +404,6 @@
                 badge.classList.add('hidden');
             }
         }
-
-        // 將 switchTab 暴露給 home 卡片使用
-        window.switchTab = switchTab;
     </script>
 </body>
 </html>
